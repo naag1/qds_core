@@ -1,0 +1,9 @@
+{
+  "package_version": "1.0.0",
+  "artifact": "model.onnx",
+  "sha256": "7cea698ef6d77fae3dfd2aa32a022ab61efa382a388d3dcf2eeec48fbc6929f5",
+  "feature_order": ["src_port", "dst_port", "protocol", "flow_duration", "total_packets", "total_bytes", "packet_length_mean", "packet_length_std", "bytes_per_second", "packets_per_second"],
+  "labels": {"0": "BENIGN", "1": "DoS/DDoS", "2": "PortScan", "3": "Botnet", "4": "Infiltration"},
+  "training": {"dataset": "CIC-IDS2017", "split": "legacy artifact; retraining required before production promotion"},
+  "runtime": {"onnxruntime": ">=1.15.0"}
+}

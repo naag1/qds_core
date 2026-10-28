@@ -1,0 +1,61 @@
+services:
+  api:
+    build: .
+    environment:
+      QDS_DATABASE_URL: "postgresql+psycopg://qds:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres/qds"
+      QDS_REDIS_URL: "redis://redis:6379/0"
+      QDS_OLLAMA_HOST: "http://ollama:11434"
+      QDS_OLLAMA_MODEL: "${QDS_OLLAMA_MODEL:-qwen2.5:3b}"
+      QDS_JWT_SECRET: "${QDS_JWT_SECRET:?set QDS_JWT_SECRET}"
+      QDS_SENSOR_TOKEN: "${QDS_SENSOR_TOKEN:?set QDS_SENSOR_TOKEN}"
+      QDS_BOOTSTRAP_ADMIN_PASSWORD: "${QDS_BOOTSTRAP_ADMIN_PASSWORD:?set QDS_BOOTSTRAP_ADMIN_PASSWORD}"
+      QDS_ENVIRONMENT: production
+      QDS_ALLOWED_ORIGINS: "${QDS_ALLOWED_ORIGINS:-http://localhost:8080}"
+    depends_on:
+      postgres: {condition: service_started}
+      redis: {condition: service_started}
+      ollama: {condition: service_started}
+    ports: ["8000:8000"]
+  worker:
+    build: .
+    command: python -m app.worker
+    environment:
+      QDS_DATABASE_URL: "postgresql+psycopg://qds:${POSTGRES_PASSWORD}@postgres/qds"
+      QDS_REDIS_URL: "redis://redis:6379/0"
+      QDS_OLLAMA_HOST: "http://ollama:11434"
+      QDS_OLLAMA_MODEL: "${QDS_OLLAMA_MODEL:-qwen2.5:3b}"
+    depends_on:
+      postgres: {condition: service_started}
+      redis: {condition: service_started}
+      ollama: {condition: service_started}
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: qds
+      POSTGRES_USER: qds
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}"
+    volumes: [qds-postgres:/var/lib/postgresql/data]
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes: [qds-redis:/data]
+  ollama:
+    image: ollama/ollama:latest
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    volumes: [qds-ollama:/root/.ollama]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+  dashboard:
+    build: ./web
+    depends_on: [api]
+    ports: ["8080:80"]
+volumes: {qds-postgres: {}, qds-redis: {}, qds-ollama: {}}

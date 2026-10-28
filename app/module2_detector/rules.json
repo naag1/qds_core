@@ -1,0 +1,8 @@
+{
+  "version": "1.0.0",
+  "rules": [
+    {"id":"HEURISTIC_PACKET_FLOOD","severity":"high","mitre":["T1498"],"rationale":"High packet rate with significant packet volume.","when":{"packets_per_second_gt":5000,"total_packets_gt":100}},
+    {"id":"HEURISTIC_PORT_SCAN_PROBE","severity":"medium","mitre":["T1046"],"rationale":"Short, low-volume probe to a non-web port.","when":{"total_packets_lte":3,"flow_duration_lt":0.05,"exclude_dst_ports":[80,443]}},
+    {"id":"HEURISTIC_HIGH_VOLUME_BURST","severity":"high","mitre":["T1041"],"rationale":"Large data transfer over a short interval.","when":{"total_bytes_gt":10000000,"flow_duration_lt":1.0}}
+  ]
+}

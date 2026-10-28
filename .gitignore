@@ -1,0 +1,23 @@
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+native_worker/build/
+native_worker/.idea/
+data/
+web/dist/
+web/node_modules/
+
+# Local datasets, packet captures, and generated model artifacts.
+# These may be large or contain environment-specific network/training data.
+ML_Model_Training Data/
+*.pcap
+*.pcapng
+*.cap
+models_training/*.pkl
+app/module2_detector/*.onnx
+

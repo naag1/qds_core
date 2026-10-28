@@ -1,0 +1,48 @@
+#version 450
+
+// GPU packet decoder ABI. The host stages packet bytes and one PacketDesc per
+// capture record. One invocation decodes one packet without allocating objects.
+layout(local_size_x = 256) in;
+
+struct PacketDesc { uint offset; uint pkt_len; uint ts_seconds; uint ts_fraction; };
+struct PacketMeta {
+    uint valid; uint protocol; uint src_port; uint dst_port;
+    uint src_hi; uint src_lo; uint dst_hi; uint dst_lo;
+    uint packet_length; uint timestamp_seconds; uint timestamp_fraction;
+};
+
+layout(std430, binding = 0) readonly buffer PacketBytes { uint words[]; } packet_bytes;
+layout(std430, binding = 1) readonly buffer PacketTable { PacketDesc packets[]; } packet_table;
+layout(std430, binding = 2) writeonly buffer PacketOutput { PacketMeta metadata[]; } packet_output;
+
+uint u8(uint p) { uint w = packet_bytes.words[p >> 2]; return (w >> ((p & 3) * 8)) & 255; }
+uint be16(uint p) { return (u8(p) << 8) | u8(p + 1); }
+uint be32(uint p) { return (u8(p) << 24) | (u8(p + 1) << 16) | (u8(p + 2) << 8) | u8(p + 3); }
+
+void main() {
+    uint i = gl_GlobalInvocationID.x;
+    if (i >= packet_table.packets.length()) return;
+    PacketDesc d = packet_table.packets[i];
+    PacketMeta meta = PacketMeta(0, 0, 0, 0, 0, 0, 0, 0, d.pkt_len, d.ts_seconds, d.ts_fraction);
+    if (d.pkt_len < 14) { packet_output.metadata[i] = meta; return; }
+    uint p = d.offset;
+    uint ether_type = be16(p + 12);
+    p += 14;
+    if (ether_type == 0x8100 && d.pkt_len >= 18) { ether_type = be16(p + 2); p += 4; }
+    uint remaining = d.pkt_len - (p - d.offset);
+    if (ether_type == 0x0800 && remaining >= 20) {
+        uint ihl = (u8(p) & 15) * 4;
+        if (ihl < 20 || remaining < ihl) { packet_output.metadata[i] = meta; return; }
+        meta.src_hi = be32(p + 12); meta.dst_hi = be32(p + 16);
+        meta.protocol = u8(p + 9); p += ihl; remaining -= ihl;
+    } else if (ether_type == 0x86dd && remaining >= 40) {
+        meta.src_hi = be32(p + 8); meta.src_lo = be32(p + 20);
+        meta.dst_hi = be32(p + 24); meta.dst_lo = be32(p + 36);
+        meta.protocol = u8(p + 6); p += 40; remaining -= 40;
+    } else { packet_output.metadata[i] = meta; return; }
+    if ((meta.protocol == 6 || meta.protocol == 17) && remaining >= 4) {
+        meta.src_port = be16(p); meta.dst_port = be16(p + 2);
+    }
+    meta.valid = 1;
+    packet_output.metadata[i] = meta;
+}

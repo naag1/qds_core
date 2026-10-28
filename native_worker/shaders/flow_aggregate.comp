@@ -1,0 +1,18 @@
+#version 450
+// One work item aggregates one decoded packet into an open-addressed flow table.
+// The host must size table_entries to a power of two and clear occupied fields.
+layout(local_size_x = 256) in;
+struct PacketMeta { uint valid; uint protocol; uint src_port; uint dst_port; uint src_hi; uint src_lo; uint dst_hi; uint dst_lo; uint packet_length; uint ts_seconds; uint ts_fraction; };
+struct FlowEntry { uint occupied; uint protocol; uint src_port; uint dst_port; uint src_hi; uint src_lo; uint dst_hi; uint dst_lo; uint first_s; uint last_s; uint packet_count; uint total_bytes; };
+layout(std430, binding=0) readonly buffer Input { PacketMeta packets[]; } input_packets;
+layout(std430, binding=1) buffer Table { FlowEntry entries[]; } flow_table;
+uint hash(PacketMeta p) { return p.src_hi ^ p.src_lo ^ p.dst_hi ^ p.dst_lo ^ p.src_port ^ (p.dst_port << 16) ^ p.protocol; }
+void main() {
+  uint i=gl_GlobalInvocationID.x; if(i>=input_packets.packets.length()) return; PacketMeta p=input_packets.packets[i]; if(p.valid==0) return;
+  uint n=flow_table.entries.length(); uint slot=hash(p)&(n-1);
+  for(uint probe=0; probe<n; ++probe) { uint previous=atomicCompSwap(flow_table.entries[slot].occupied,0,1);
+    if(previous==0 || (flow_table.entries[slot].protocol==p.protocol && flow_table.entries[slot].src_port==p.src_port && flow_table.entries[slot].dst_port==p.dst_port && flow_table.entries[slot].src_hi==p.src_hi && flow_table.entries[slot].dst_hi==p.dst_hi)) {
+      if(previous==0) { flow_table.entries[slot].protocol=p.protocol; flow_table.entries[slot].src_port=p.src_port; flow_table.entries[slot].dst_port=p.dst_port; flow_table.entries[slot].src_hi=p.src_hi; flow_table.entries[slot].src_lo=p.src_lo; flow_table.entries[slot].dst_hi=p.dst_hi; flow_table.entries[slot].dst_lo=p.dst_lo; flow_table.entries[slot].first_s=p.ts_seconds; flow_table.entries[slot].last_s=p.ts_seconds; }
+      atomicAdd(flow_table.entries[slot].packet_count,1); atomicAdd(flow_table.entries[slot].total_bytes,p.packet_length); atomicMin(flow_table.entries[slot].first_s,p.ts_seconds); atomicMax(flow_table.entries[slot].last_s,p.ts_seconds); return; }
+    slot=(slot+1)&(n-1); }
+}
